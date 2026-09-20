@@ -4,9 +4,9 @@ import (
 	beep "github.com/gopxl/beep/v2"
 )
 
-// Common sample rate for all audio playback
-// 44100 Hz is a standard sample rate that works well for most audio
-const sampleRate = beep.SampleRate(44100)
+// Common sample rate for all audio playback.
+// Match the 48 kHz rate used by the system's PipeWire output to avoid resampling.
+const sampleRate = beep.SampleRate(48000)
 
 var registeredEffects = make([]Effect, 0)
 
