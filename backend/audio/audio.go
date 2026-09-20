@@ -10,7 +10,6 @@ import (
 
 	beep "github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/mp3"
-	"github.com/gopxl/beep/v2/speaker"
 	"github.com/gopxl/beep/v2/wav"
 )
 
@@ -78,12 +77,13 @@ type audioPlayerImpl struct {
 	initMutex    sync.Mutex
 	playMutex    sync.Mutex
 	activeVoices atomic.Int32
+	output       audioOutput
 }
 
 // GetAudioPlayer retrieves the audio player instance
 func GetAudioPlayer() AudioPlayer {
 	audioPlayerOnce.Do(func() {
-		player := &audioPlayerImpl{}
+		player := &audioPlayerImpl{output: newAudioOutput()}
 		audioPlayer = player
 		go player.monitorHealth()
 	})
@@ -99,9 +99,9 @@ func (a *audioPlayerImpl) monitorHealth() {
 		a.playMutex.Lock()
 		a.initMutex.Lock()
 		if a.initialized {
-			if err := speaker.Err(); err != nil {
-				slog.Error("audio backend stopped; restarting speaker", "error", err)
-				speaker.Close()
+			if err := a.output.Err(); err != nil {
+				slog.Error("audio backend stopped; restarting audio output", "error", err)
+				a.output.Close()
 				a.initialized = false
 			}
 		}
@@ -110,23 +110,23 @@ func (a *audioPlayerImpl) monitorHealth() {
 	}
 }
 
-// ensureInitialized initializes the speaker if it hasn't been initialized yet.
+// ensureInitialized initializes the output if it hasn't been initialized yet.
 // This is thread-safe and will only initialize once.
 func (a *audioPlayerImpl) ensureInitialized() error {
 	a.initMutex.Lock()
 	defer a.initMutex.Unlock()
 
 	if a.initialized {
-		if err := speaker.Err(); err == nil {
+		if err := a.output.Err(); err == nil {
 			return nil
 		} else {
-			slog.Error("audio backend stopped; restarting speaker", "error", err)
-			speaker.Close()
+			slog.Error("audio backend stopped; restarting audio output", "error", err)
+			a.output.Close()
 			a.initialized = false
 		}
 	}
 
-	err := speaker.Init(sampleRate, sampleRate.N(bufferDuration))
+	err := a.output.Init(sampleRate, sampleRate.N(bufferDuration))
 	if err != nil {
 		return err
 	}
@@ -170,8 +170,11 @@ func (a *audioPlayerImpl) Play(audio *Audio, effects EffectsConfig) error {
 		a.activeVoices.Add(-1)
 	}))
 
-	// Play the audio - speaker.Play is non-blocking and supports simultaneous playback
-	speaker.Play(streamer)
+	// Play the audio. The output is non-blocking and supports simultaneous playback.
+	if err := a.output.Play(streamer); err != nil {
+		a.activeVoices.Add(-1)
+		return err
+	}
 
 	return nil
 }
