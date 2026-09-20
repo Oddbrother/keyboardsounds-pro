@@ -35,11 +35,9 @@ func (m *Application) mouseEventWorker() {
 				return
 			}
 
-			go func(e listenertypes.ButtonEvent) {
-				if m.shouldPlayMouse() {
-					go m.playAudioForButtonEvent(e)
-				}
-			}(event)
+			if m.shouldPlayMouse() {
+				go m.playAudioForButtonEvent(event)
+			}
 		}
 	}
 }

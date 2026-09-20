@@ -2,6 +2,9 @@ module github.com/keyboard-sounds/keyboardsounds-pro/backend
 
 go 1.25.4
 
+replace github.com/gopxl/beep/v2 => ../third_party/beep
+replace github.com/ebitengine/oto/v3 => ../third_party/oto
+
 require (
 	github.com/google/uuid v1.6.0
 	github.com/gopxl/beep/v2 v2.1.1

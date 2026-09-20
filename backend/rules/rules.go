@@ -2,7 +2,6 @@ package rules
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,16 +9,6 @@ import (
 	"sync"
 
 	"github.com/samber/lo"
-)
-
-var (
-	// ErrPlatformNotSupported is returned when the platform is not supported.
-	ErrPlatformNotSupported = errors.New("platform not supported")
-
-	// List of platforms that support application rules
-	supportedPlatforms = []string{
-		"windows", "darwin",
-	}
 )
 
 // Rule is a rule for a given app path.
@@ -102,13 +91,8 @@ var (
 	}
 )
 
-// LoadRules loads the rules.json file from the given directory. On Linux, this returns ErrPlatformNotSupported.
+// LoadRules loads the rules.json file from the given directory.
 func LoadRules(dir string) error {
-	// Application rules are currently only supported on Windows and Darwin.
-	if !lo.Contains(supportedPlatforms, runtime.GOOS) {
-		return ErrPlatformNotSupported
-	}
-
 	rulesCacheLock.Lock()
 	defer rulesCacheLock.Unlock()
 

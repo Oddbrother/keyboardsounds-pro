@@ -3,7 +3,9 @@ package audio
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	beep "github.com/gopxl/beep/v2"
@@ -58,8 +60,13 @@ type AudioPlayer interface {
 	Play(audio *Audio, effects EffectsConfig) error
 }
 
-// Buffer duration for the speaker (10ms provides low latency)
-const bufferDuration = time.Second / 10
+// Buffer duration for the speaker. Beep splits this between the audio driver
+// and its player, so 20 ms provides roughly 10 ms of buffering at each layer.
+const bufferDuration = 20 * time.Millisecond
+
+// maxConcurrentVoices bounds the amount of work the mixer can perform when
+// input events arrive faster than the audio device can consume them.
+const maxConcurrentVoices = 32
 
 var (
 	audioPlayer     AudioPlayer
@@ -67,17 +74,40 @@ var (
 )
 
 type audioPlayerImpl struct {
-	initialized bool
-	initMutex   sync.Mutex
+	initialized  bool
+	initMutex    sync.Mutex
+	playMutex    sync.Mutex
+	activeVoices atomic.Int32
 }
 
 // GetAudioPlayer retrieves the audio player instance
 func GetAudioPlayer() AudioPlayer {
 	audioPlayerOnce.Do(func() {
-		audioPlayer = &audioPlayerImpl{}
+		player := &audioPlayerImpl{}
+		audioPlayer = player
+		go player.monitorHealth()
 	})
 
 	return audioPlayer
+}
+
+func (a *audioPlayerImpl) monitorHealth() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		a.playMutex.Lock()
+		a.initMutex.Lock()
+		if a.initialized {
+			if err := speaker.Err(); err != nil {
+				slog.Error("audio backend stopped; restarting speaker", "error", err)
+				speaker.Close()
+				a.initialized = false
+			}
+		}
+		a.initMutex.Unlock()
+		a.playMutex.Unlock()
+	}
 }
 
 // ensureInitialized initializes the speaker if it hasn't been initialized yet.
@@ -87,7 +117,13 @@ func (a *audioPlayerImpl) ensureInitialized() error {
 	defer a.initMutex.Unlock()
 
 	if a.initialized {
-		return nil
+		if err := speaker.Err(); err == nil {
+			return nil
+		} else {
+			slog.Error("audio backend stopped; restarting speaker", "error", err)
+			speaker.Close()
+			a.initialized = false
+		}
 	}
 
 	err := speaker.Init(sampleRate, sampleRate.N(bufferDuration))
@@ -100,8 +136,25 @@ func (a *audioPlayerImpl) ensureInitialized() error {
 }
 
 func (a *audioPlayerImpl) Play(audio *Audio, effects EffectsConfig) error {
+	a.playMutex.Lock()
+	defer a.playMutex.Unlock()
+
+	if !a.activeVoices.CompareAndSwap(0, 1) {
+		for {
+			active := a.activeVoices.Load()
+			if active >= maxConcurrentVoices {
+				slog.Warn("dropping audio playback because the voice limit was reached", "activeVoices", active)
+				return nil
+			}
+			if a.activeVoices.CompareAndSwap(active, active+1) {
+				break
+			}
+		}
+	}
+
 	// Ensure speaker is initialized (thread-safe, only initializes once)
 	if err := a.ensureInitialized(); err != nil {
+		a.activeVoices.Add(-1)
 		return err
 	}
 
@@ -111,6 +164,11 @@ func (a *audioPlayerImpl) Play(audio *Audio, effects EffectsConfig) error {
 	for _, effect := range registeredEffects {
 		streamer = effect.Apply(effects, streamer)
 	}
+
+	// Release the voice slot when the stream has been fully consumed.
+	streamer = beep.Seq(streamer, beep.Callback(func() {
+		a.activeVoices.Add(-1)
+	}))
 
 	// Play the audio - speaker.Play is non-blocking and supports simultaneous playback
 	speaker.Play(streamer)

@@ -9,3 +9,5 @@ sudo usermod -aG input $USER
 ```
 
 After adding your user to the `input` group, you may need to reboot your system for the changes to take effect.
+
+Keyboard and mouse default profiles are saved in `~/keyboardsounds-pro/rules.json` and restored when the application starts.

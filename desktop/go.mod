@@ -16,6 +16,12 @@ require (
 	howett.net/plist v1.0.2-0.20250314012144-ee69052608d9
 )
 
+replace github.com/keyboard-sounds/keyboardsounds-pro/backend => ../backend
+
+replace github.com/gopxl/beep/v2 => ../third_party/beep
+
+replace github.com/ebitengine/oto/v3 => ../third_party/oto
+
 require (
 	git.sr.ht/~jackmordaunt/go-toast v1.1.2 // indirect
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect

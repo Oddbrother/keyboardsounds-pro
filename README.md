@@ -1,113 +1,15 @@
-# Keyboard Sounds Pro
+# Keyboard Sounds Pro — Linux fork
 
-[![Discord](https://img.shields.io/badge/-Join%20the%20Community-gray?logo=discord&logoColor=%23ffffff&labelColor=%235865f2)](https://discord.gg/gysskqts6z)
-[![Sponsor Me](https://img.shields.io/badge/%F0%9F%92%B8-Sponsor%20Me!-blue)](https://github.com/sponsors/nathan-fiscaletti)
+This fork is based on [keyboard-sounds/keyboardsounds-pro](https://github.com/keyboard-sounds/keyboardsounds-pro).
 
-Keyboard Sounds Pro is a desktop application that will play customizable keyboard and mouse sounds while you work.
+## Changes in this fork
 
-![Keyboard Sounds Pro](./images/preview.png)
-
-## Download
-
-- [Download on GitHub](https://github.com/keyboard-sounds/keyboardsounds-pro/releases/latest)
-- [Build from Source](./docs/development.md)
-
-> Please follow the [Linux Documentation](./docs/linux.md) if you are installing on a Linux system.
-
-## Features
-
-- Play customizable keyboard and mouse sounds while you work.
-- Application rules to apply specific sound profiles to specific applications.
-- Per-device volume and audio effects.
-- Import and export sound profiles to share with others.
-- Customize and build your own sound profiles and share them with others.
-- Customizable hotkeys to control the application.
-- On-screen keyboard shortcut display.
-
-## Custom Profiles
-
-<img src="./images/library-rounded-shadow.png" width="450" align="right">
-
-<br>
-
-- Support for both **Mouse** and **Keyboard** audio profiles
-- Comes bundled with **twenty** built in profiles (13 keyboard, 7 mouse)
-- Supports Custom profiles through the editors (`.wav` and `.mp3` supported)
-- Supports importing and exporting profiles to share with others.
-
-<br><br><br>
-
-## Application Rules
-
-<img src="./images/app-rules-rounded-shadow.png" width="450" align="right">
-
-<br>
-
-- Keyboard Sounds supports application rules in which you can control the behavior of the sound daemon based on the currently focused application.
-
-- This allows you to do things like only enabling in your text editor or terminal, disabling it for specific games, or localizing the sound effects to a particular application.
-
-<br><br><br><br>
-
-## Audio Effects
-
-<img src="./images/audio-effects-rounded-shadow.png" width="450" align="right">
-
-<br>
-
-Keyboard Sounds Pro supports several audio effects to customize the sound of your keyboard and mouse.
-
-- **Pitch Shift** - Change the pitch of the sound based on a range of values.
-- **Pan** - Pan the sound to the left or right audio channel.
-- **Equalizer** - Adjust the frequency response of the sound to your liking.
-
-<br><br><br><br>
-
-## Profile Builder
-
-<img src="./images/profile-builder-rounded-shadow.png" width="450" align="right">
-
-<br>
-
-Keyboard Sounds Pro supports building your own profiles using audio files you provide. These profiles can then be shared with others and imported into the application.
-
-- Build your own profiles using the profile builders.
-- Supports building both keyboard and mouse profiles.
-- Supports .wav and .mp3 audio files.
-
-<br>
-
-## Hot Keys
-
-<img src="./images/hot-keys-rounded-shadow.png" width="450" align="right">
-
-<br>
-
-Keyboard Sounds Pro supports customizable hot keys for controlling the application quickly and easily without the need to open it and make changes.
-
-- Hot key groups based on modifier key list
-- Map actions to hot keys
-- Customize values (i.e. volume steps)
-
-<br><br><br><br>
-
-## On-screen modifiers
-
-<img src="./images/on-screen-modifiers-rounded-shadow.png" width="450" align="right">
-
-<br>
-
-Keyboard Sounds Pro supports a special feature for screen sharing that will display a brief pop-up each time you use a modifier-key combination.
-
-- Perfect for tutorials, livestreams and learning keyboard shortcuts.
-- Fully customizable display (color, opacity, size, offset, etc.)
-
-<br>
-
-## Development
-
-You can easily build Keyboard Sounds Pro from source locally or use the Keyboard Sounds Backend in your own application. See [Development](./docs/development.md) for more information.
-
-## Stargazers over time
-
-[![Stargazers over time](https://starchart.cc/keyboard-sounds/keyboardsounds-pro.svg?variant=adaptive)](https://starchart.cc/keyboard-sounds/keyboardsounds-pro)
+- Persist keyboard and mouse default profiles on Linux in `~/keyboardsounds-pro/rules.json`.
+- Load saved Linux default profiles when the application starts.
+- Reduce the default audio buffer to 20 ms for responsive input playback.
+- Bound concurrent audio voices to prevent unbounded mixer growth during heavy input.
+- Remove redundant mouse-event goroutines.
+- Add audio health monitoring and recovery for transient playback failures.
+- Add ALSA/PipeWire write recovery so audio playback can continue after recoverable I/O errors.
+- Include local Beep and Oto patches required by the Linux audio recovery behavior.
+- Add Linux profile persistence coverage and documentation.

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -144,11 +143,7 @@ func NewApp(cfgDir string) (*Application, error) {
 
 	err = rules.LoadRules(cfgDir)
 	if err != nil {
-		if !errors.Is(err, rules.ErrPlatformNotSupported) {
-			return nil, fmt.Errorf("failed to load rules: %w", err)
-		}
-
-		slog.Warn("application rules disabled", "error", err)
+		return nil, fmt.Errorf("failed to load rules: %w", err)
 	}
 
 	err = hotkeys.LoadHotKeys(cfgDir)
@@ -400,6 +395,10 @@ func (m *Application) setDefaultProfilesWindows(profiles rules.Profiles) error {
 }
 
 func (m *Application) setDefaultProfilesLinux(profiles rules.Profiles) error {
+	if err := rules.SetDefaultProfiles(profiles); err != nil {
+		return fmt.Errorf("failed to set default profiles: %w", err)
+	}
+
 	m.updateProfiles(profiles)
 
 	return nil
