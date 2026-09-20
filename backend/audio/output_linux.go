@@ -8,19 +8,27 @@ package audio
 #include <stdlib.h>
 
 typedef struct pa_simple pa_simple;
+typedef struct pa_channel_map pa_channel_map;
 typedef struct {
 	uint32_t format;
 	uint32_t rate;
 	uint8_t channels;
 } pa_sample_spec;
+typedef struct {
+	uint32_t maxlength;
+	uint32_t tlength;
+	uint32_t prebuf;
+	uint32_t minreq;
+	uint32_t fragsize;
+} pa_buffer_attr;
 
-extern pa_simple* pa_simple_new(const char*, const char*, int, const char*, const char*, const pa_sample_spec*, const void*, const void*, int*);
+extern pa_simple* pa_simple_new(const char*, const char*, int, const char*, const char*, const pa_sample_spec*, const pa_channel_map*, const pa_buffer_attr*, int*);
 extern int pa_simple_write(pa_simple*, const void*, size_t, int*);
 extern void pa_simple_free(pa_simple*);
 extern const char* pa_strerror(int);
 
-static pa_simple* pulse_simple_new(const pa_sample_spec* spec, int* error) {
-	return pa_simple_new(NULL, "keyboardsounds-pro", 1, NULL, "keyboard sounds", spec, NULL, NULL, error);
+static pa_simple* pulse_simple_new(const pa_sample_spec* spec, const pa_buffer_attr* attr, int* error) {
+	return pa_simple_new(NULL, "keyboardsounds-pro", 1, NULL, "keyboard sounds", spec, NULL, attr, error);
 }
 */
 import "C"
@@ -36,6 +44,7 @@ import (
 )
 
 const pulseSampleFloat32LE = 5
+const pulseChunkDuration = 5 * time.Millisecond
 
 type pulseAudioOutput struct {
 	mutex       sync.Mutex
@@ -68,8 +77,16 @@ func (o *pulseAudioOutput) Init(sampleRate beep.SampleRate, bufferSize int) erro
 		rate:     C.uint32_t(sampleRate),
 		channels: 2,
 	}
+	bytesPerFrame := 2 * 4
+	attr := C.pa_buffer_attr{
+		maxlength: C.uint32_t(bufferSize * bytesPerFrame),
+		tlength:   C.uint32_t(bufferSize * bytesPerFrame),
+		prebuf:    0,
+		minreq:    C.uint32_t(sampleRate.N(pulseChunkDuration) * bytesPerFrame),
+		fragsize:  C.uint32_t(^uint32(0)),
+	}
 	var pulseErr C.int
-	client := C.pulse_simple_new(&spec, &pulseErr)
+	client := C.pulse_simple_new(&spec, &attr, &pulseErr)
 	if client == nil {
 		return fmt.Errorf("initialize PulseAudio output: %s", C.GoString(C.pa_strerror(pulseErr)))
 	}
@@ -134,7 +151,8 @@ func (o *pulseAudioOutput) run() {
 		}
 		close(o.finished)
 	}()
-	ticker := time.NewTicker(time.Duration(o.bufferSize) * time.Second / time.Duration(o.sampleRate))
+	chunkSize := o.sampleRate.N(pulseChunkDuration)
+	ticker := time.NewTicker(pulseChunkDuration)
 	defer ticker.Stop()
 
 	for {
@@ -142,7 +160,7 @@ func (o *pulseAudioOutput) run() {
 		case <-o.done:
 			return
 		case <-ticker.C:
-			if err := o.writeBuffer(); err != nil {
+			if err := o.writeBuffer(chunkSize); err != nil {
 				o.mutex.Lock()
 				o.err = err
 				o.mutex.Unlock()
@@ -152,17 +170,16 @@ func (o *pulseAudioOutput) run() {
 	}
 }
 
-func (o *pulseAudioOutput) writeBuffer() error {
+func (o *pulseAudioOutput) writeBuffer(bufferSize int) error {
 	o.mutex.Lock()
 	if o.closed || o.err != nil || len(o.streamers) == 0 {
 		o.mutex.Unlock()
 		return nil
 	}
 	client := o.client
-	bufferSize := o.bufferSize
-
 	mixed := make([][2]float64, bufferSize)
 	remaining := o.streamers[:0]
+	hasSamples := false
 	for _, streamer := range o.streamers {
 		samples := make([][2]float64, bufferSize)
 		n, ok := streamer.Stream(samples)
@@ -170,6 +187,7 @@ func (o *pulseAudioOutput) writeBuffer() error {
 			mixed[i][0] += samples[i][0]
 			mixed[i][1] += samples[i][1]
 		}
+		hasSamples = hasSamples || n > 0
 		if ok || n > 0 {
 			remaining = append(remaining, streamer)
 		}
@@ -178,7 +196,7 @@ func (o *pulseAudioOutput) writeBuffer() error {
 		o.streamers = remaining
 	}
 	o.mutex.Unlock()
-	if len(remaining) == 0 {
+	if !hasSamples {
 		return nil
 	}
 
