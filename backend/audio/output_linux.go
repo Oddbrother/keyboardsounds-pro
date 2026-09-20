@@ -35,8 +35,10 @@ import "C"
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -57,6 +59,10 @@ type pulseAudioOutput struct {
 	initialized bool
 	closed      bool
 	err         error
+	submitted   atomic.Uint64
+	writes      atomic.Uint64
+	nonzero     atomic.Uint64
+	zeroBlocks  atomic.Uint64
 }
 
 func newAudioOutput() audioOutput {
@@ -98,6 +104,7 @@ func (o *pulseAudioOutput) Init(sampleRate beep.SampleRate, bufferSize int) erro
 	o.closed = false
 	o.err = nil
 	o.initialized = true
+	slog.Info("initialized PulseAudio output", "sampleRate", sampleRate, "bufferFrames", bufferSize, "chunkFrames", sampleRate.N(pulseChunkDuration))
 	go o.run()
 	return nil
 }
@@ -112,6 +119,7 @@ func (o *pulseAudioOutput) Play(streamer beep.Streamer) error {
 		return o.err
 	}
 	o.streamers = append(o.streamers, streamer)
+	o.submitted.Add(1)
 	return nil
 }
 
@@ -154,6 +162,8 @@ func (o *pulseAudioOutput) run() {
 	chunkSize := o.sampleRate.N(pulseChunkDuration)
 	ticker := time.NewTicker(pulseChunkDuration)
 	defer ticker.Stop()
+	reporter := time.NewTicker(5 * time.Second)
+	defer reporter.Stop()
 
 	for {
 		select {
@@ -166,6 +176,17 @@ func (o *pulseAudioOutput) run() {
 				o.mutex.Unlock()
 				return
 			}
+		case <-reporter.C:
+			o.mutex.Lock()
+			active := len(o.streamers)
+			o.mutex.Unlock()
+			slog.Info("PulseAudio output activity",
+				"submitted", o.submitted.Load(),
+				"writes", o.writes.Load(),
+				"nonzeroWrites", o.nonzero.Load(),
+				"zeroBlocks", o.zeroBlocks.Load(),
+				"activeStreamers", active,
+			)
 		}
 	}
 }
@@ -197,6 +218,7 @@ func (o *pulseAudioOutput) writeBuffer(bufferSize int) error {
 	}
 	o.mutex.Unlock()
 	if !hasSamples {
+		o.zeroBlocks.Add(1)
 		return nil
 	}
 
@@ -209,5 +231,7 @@ func (o *pulseAudioOutput) writeBuffer(bufferSize int) error {
 	if C.pa_simple_write(client, unsafe.Pointer(&pcm[0]), C.size_t(len(pcm)*4), &pulseErr) < 0 {
 		return fmt.Errorf("write PulseAudio stream: %s", C.GoString(C.pa_strerror(pulseErr)))
 	}
+	o.writes.Add(1)
+	o.nonzero.Add(1)
 	return nil
 }
